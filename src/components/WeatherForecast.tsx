@@ -5,29 +5,32 @@ import { useDuckDB } from '@jetblack/duckdb-react'
 import { arrowRowGenerator } from '../utils'
 import weatherData from '../assets/data.json'
 
+interface Observation {
+  time: Date
+  temperature: number
+}
+
 export default function WeatherForecast() {
-  const { db, loading, error } = useDuckDB()
+  const { db } = useDuckDB()
   const [isTableLoaded, setIsTableLoaded] = useState(false)
+  const [observations, setObservations] = useState<Observation[]>([])
 
   useEffect(() => {
     if (!db) {
       return
     }
     const asyncFunc = async () => {
-      console.log(weatherData)
       const text = JSON.stringify(weatherData)
-      console.log('Loading table')
       await db.registerFileText('observations.json', text)
       const con = await db.connect()
       await con.insertJSONFromPath('observations.json', {
         name: 'observations'
       })
-      console.log('Table loaded')
 
-      setIsTableLoaded(true)
+      return true
     }
 
-    asyncFunc().catch(console.error)
+    asyncFunc().then(setIsTableLoaded).catch(console.error)
   }, [db])
 
   useEffect(() => {
@@ -36,21 +39,35 @@ export default function WeatherForecast() {
     }
 
     const asyncFunc = async () => {
-      console.log('Querying table')
       const con = await db.connect()
-      const table = await con.query('SELECT * FROM observations;')
+      const table = await con.query('SELECT * FROM observations LIMIT 10;')
       const rows = Array.from(
         arrowRowGenerator(table, (key, value) =>
           key === 'time' && typeof value === 'number' ? new Date(value) : value
         )
-      )
-      console.log({ rows })
+      ) as Observation[]
+      return rows
     }
 
-    asyncFunc().catch(console.error)
+    asyncFunc().then(setObservations).catch(console.error)
   }, [isTableLoaded, db])
 
-  console.log({ db, loading, error })
-
-  return <div>Weather Forecast</div>
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th style={{ textAlign: 'right' }}>Temperature</th>
+        </tr>
+      </thead>
+      <tbody>
+        {observations.map(({ time, temperature }) => (
+          <tr key={time.valueOf()}>
+            <td>{time.toISOString()}</td>
+            <td style={{ textAlign: 'right' }}>{temperature.toFixed(2)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
 }
